@@ -1,11 +1,11 @@
 {
   "name": "com.whiteglovedev.discopanda",
   "displayName": "Disco Panda",
-    "author": {
-        "url": "https://whiteglove.dev/", 
-        "name": "White Glove Dev", 
-        "email": "hello@whiteglove.dev"
-    },
+  "author": {
+    "url": "https://whiteglove.dev/",
+    "name": "White Glove Dev",
+    "email": "hello@whiteglove.dev"
+  },
   "version": "0.0.1",
   "unity": "2022.1",
   "description": "Spyware",

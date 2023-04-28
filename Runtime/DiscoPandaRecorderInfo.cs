@@ -1,9 +1,29 @@
+using System.IO;
 using UnityEngine;
 
-//[CreateAssetMenu(fileName = "DiscoPandaRecorderInfo", menuName = "DiscoPanda/Recorder Info", order = 1)]
 public class DiscoPandaRecorderInfo : ScriptableObject
 {
-    public static DiscoPandaRecorderInfo Asset => Resources.Load<DiscoPandaRecorderInfo>("DiscoPandaRecorderInfo");
+    public static DiscoPandaRecorderInfo Asset
+    {
+        get
+        {
+            var asset = Resources.Load<DiscoPandaRecorderInfo>("DiscoPandaRecorderInfo");
+
+#if UNITY_EDITOR
+            if (asset == null)
+            {
+                var resourcesPath = Path.Join(Application.dataPath, "Resources");
+                
+                if (!Directory.Exists(resourcesPath))
+                    Directory.CreateDirectory(resourcesPath);
+
+                asset = CreateInstance<DiscoPandaRecorderInfo>();
+                UnityEditor.AssetDatabase.CreateAsset(asset, "Assets/Resources/DiscoPandaRecorderInfo.asset");
+            }
+#endif
+            return asset;
+        }
+    }
 
     public string APIKEY;
 }

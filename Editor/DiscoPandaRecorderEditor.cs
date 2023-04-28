@@ -45,8 +45,9 @@ static class DiscoPandaRecorderEditor
             return;
         }
 
-        string assetPath = AssetDatabase.GetAssetPath(recorderInfo);
-        DiscoPandaRecorder.ffmpegPath = Path.GetFullPath(assetPath).Replace("DiscoPandaRecorderInfo.asset", "ffmpeg.exe");
+        var assets = AssetDatabase.FindAssets("ffmpeg");
+        var assetPath = AssetDatabase.GUIDToAssetPath(assets[0]);
+        DiscoPandaRecorder.ffmpegPath = Path.GetFullPath(assetPath);
 
         if (!File.Exists(DiscoPandaRecorder.ffmpegPath))
         {
