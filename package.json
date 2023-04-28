@@ -10,5 +10,8 @@
   "unity": "2022.1",
   "description": "Spyware",
   "keywords": [],
-  "category": "whiteglovedev"
+  "category": "whiteglovedev",
+    "dependencies": {
+	"com.unity.nuget.newtonsoft-json": "3.2.0"
+  }
 }

@@ -1,9 +1,7 @@
 {
     "name": "DiscoPanda",
     "rootNamespace": "",
-    "references": [
-        "GUID:ea73f805f48068f409cafb2b12726b78"
-    ],
+    "references": [],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
