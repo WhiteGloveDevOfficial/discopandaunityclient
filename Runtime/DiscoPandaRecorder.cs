@@ -4,7 +4,6 @@ using System.IO;
 using UnityEngine;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using UnityEngine.Networking;
 using System.Net.Http;
 using Newtonsoft.Json;
 
@@ -20,7 +19,17 @@ public static class DiscoPandaRecorder
     private static bool isRecording;
     private static string currentSubfolderPath;
 
-    private static Queue<System.Diagnostics.Process> processesQueue = new Queue<System.Diagnostics.Process>();
+    private static DateTime recordingStartTime;
+    private static long chunkStartTime;
+
+    struct CaptureInfo
+    { 
+        public long startTime;
+        public long endTime;
+        public System.Diagnostics.Process process;
+    }
+
+    private static Queue<CaptureInfo> processesQueue = new Queue<CaptureInfo>();
     private static RenderTexture renderTexture;
 
     public static System.Action OnRecordingStarted { get; set; }
@@ -50,6 +59,8 @@ public static class DiscoPandaRecorder
         VideoUpload.sessionId = Guid.NewGuid().ToString();
         Debug.Log($"VideoUpload.sessionId  {VideoUpload.sessionId}");
 
+        recordingStartTime = DateTime.Now;
+
         OnRecordingStarted?.Invoke();
     }
 
@@ -63,6 +74,16 @@ public static class DiscoPandaRecorder
 
     static int frameCount = 0;
 
+    private static long GetCurrentMilliseconds()
+    {
+        var interval = DateTime.Now - recordingStartTime;
+        return interval.Days * 24 * 60 * 60 * 1000 +
+               interval.Hours * 60 * 60 * 1000 +
+               interval.Minutes * 60 * 1000 +
+               interval.Seconds * 1000 +
+               interval.Milliseconds;
+    }
+
     public static void CaptureFrames()
     {
         if (!isRecording) return;
@@ -70,18 +91,28 @@ public static class DiscoPandaRecorder
         if (!Application.isPlaying) return;
 
         frameCount++;
+        var timeSinceRecordingStarted = GetCurrentMilliseconds();
 
-        // Check if it's time to create a video from the screenshots and delete them
+        // Check if it's time to create a video from the screenshots
         if (Time.frameCount % (captureFrameRate * 10) == 0 && currentSubfolderPath != null)
         {
-            System.Diagnostics.Process process = CreateVideoFromScreenshots(currentSubfolderPath);
-            processesQueue.Enqueue(process);
+            var captureInfo = new CaptureInfo()
+            {
+                startTime = chunkStartTime,
+                endTime = timeSinceRecordingStarted,
+                process = CreateVideoFromScreenshots(currentSubfolderPath)
+            };
+
+            Debug.Log($"CreateVideoFromScreenshots {chunkStartTime} {timeSinceRecordingStarted}");
+
+            processesQueue.Enqueue(captureInfo);
         }
 
         // Create a new subfolder for each 10-second segment
         if (currentSubfolderPath == null || Time.frameCount % (captureFrameRate * 10) == 0)
         {
             frameCount = 0;
+            chunkStartTime = timeSinceRecordingStarted;
             currentSubfolderPath = CreateNewSubfolder();
             renderTexture = new RenderTexture(videoResolutionWidth, videoResolutionHeight, 24);
         }
@@ -103,14 +134,22 @@ public static class DiscoPandaRecorder
         // Reset the camera's target texture
         Camera.main.targetTexture = null;
 
-        // If there's a finished process, delete the corresponding screenshots
-        while (processesQueue.Count > 0 && processesQueue.Peek().HasExited)
+        // Check if it's time to send a thumbnail
+        if (Time.frameCount % captureFrameRate == 0 && currentSubfolderPath != null)
         {
-            System.Diagnostics.Process finishedProcess = processesQueue.Dequeue();
+            _ = VideoUpload.UploadThumbnailAsync(bytes, timeSinceRecordingStarted);
+        }
+
+        // If there's a finished process, delete the corresponding screenshots
+        while (processesQueue.Count > 0 && processesQueue.Peek().process.HasExited)
+        {
+            var captureInfo = processesQueue.Dequeue();
+
+            System.Diagnostics.Process finishedProcess = captureInfo.process;
             string finishedSubfolderPath = Path.GetDirectoryName(finishedProcess.StartInfo.Arguments.Split('"')[1]);
             DeleteScreenshots(finishedSubfolderPath);
 
-            _ = VideoUpload.UploadVideoAsync(Path.Join(finishedSubfolderPath, "output.mp4"));
+            _ = VideoUpload.UploadVideoAsync(Path.Join(finishedSubfolderPath, "output.mp4"), captureInfo.startTime, captureInfo.endTime);
         }
     }
 
@@ -167,8 +206,15 @@ public static class DiscoPandaRecorder
         DirectoryInfo directoryInfo = new DirectoryInfo(subfolderPath);
         FileInfo[] screenshots = directoryInfo.GetFiles("*.png");
 
+        bool isFirst = true;
         foreach (FileInfo screenshot in screenshots)
         {
+            if (isFirst)
+            {
+                isFirst = false;
+                continue;
+            }
+
             File.Delete(screenshot.FullName);
         }
     }
@@ -178,15 +224,16 @@ public static class DiscoPandaRecorder
 public static class VideoUpload
 {
     public static string sessionId;
-    private static string apiUrl = "https://fox2fi7x68.execute-api.eu-west-1.amazonaws.com/prod/video-upload";
+    private static string apiUrlVideoUpload = "https://fox2fi7x68.execute-api.eu-west-1.amazonaws.com/prod/video-upload";
+    private static string apiUrlThumbnailUpload = "https://fox2fi7x68.execute-api.eu-west-1.amazonaws.com/prod/thumbnail-upload";
 
-    public static async Task UploadVideoAsync(string videoPath)
+    public static async Task UploadVideoAsync(string videoPath, long startTime, long endTime)
     {
         Debug.Log($"UploadVideoAsync. {videoPath}");
 
         try
         {
-            string presignedUploadUrl = await GetPresignedUrlAsync();
+            string presignedUploadUrl = await GetPresignedVideoUploadUrlAsync(startTime, endTime);
             if (presignedUploadUrl == null)
             {
                 Debug.LogError("Error getting presigned URL.");
@@ -223,11 +270,65 @@ public static class VideoUpload
         }
     }
 
-    private static async Task<string> GetPresignedUrlAsync()
+    public static async Task UploadThumbnailAsync(byte[] fileData, long time)
+    {
+        Debug.Log($"UploadThumbnailAsync.");
+
+        try
+        {
+            string presignedUploadUrl = await GetPresignedThumbnailUploadUrlAsync(time);
+            if (presignedUploadUrl == null)
+            {
+                Debug.LogError("Error getting presigned URL.");
+                return;
+            }
+
+            Debug.Log($"presignedUploadUrl. {presignedUploadUrl}");
+
+            bool uploadSuccess = await UploadPNGataAsync(presignedUploadUrl, fileData);
+            if (uploadSuccess)
+            {
+                Debug.Log("File uploaded successfully.");
+            }
+            else
+            {
+                Debug.LogError("Error uploading file.");
+            }
+        }
+        catch (Exception e)
+        {
+            Debug.LogException(e);
+        }
+    }
+
+    private static async Task<string> GetPresignedVideoUploadUrlAsync(long startTime, long endTime)
     {
         string apiKey = DiscoPandaRecorderInfo.Asset.APIKEY;
 
-        string url = $"{apiUrl}?api_key={apiKey}&session_id={sessionId}";
+        string url = $"{apiUrlVideoUpload}?api_key={apiKey}&session_id={sessionId}&start={startTime}&end={endTime}";
+        using HttpClient httpClient = new HttpClient();
+        HttpResponseMessage response = await httpClient.GetAsync(url);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var responseString = await response.Content.ReadAsStringAsync();
+            Debug.LogError($"Response error: {responseString} url: {url}");
+            return null;
+        }
+
+        string responseBody = await response.Content.ReadAsStringAsync();
+        var jsonResponse = JsonConvert.DeserializeObject<PresignedUrlData>(responseBody);
+        Debug.Log(responseBody);
+        string presignedUploadUrl = jsonResponse.Url;
+
+        return presignedUploadUrl;
+    }
+
+    private static async Task<string> GetPresignedThumbnailUploadUrlAsync(long time)
+    {
+        string apiKey = DiscoPandaRecorderInfo.Asset.APIKEY;
+
+        string url = $"{apiUrlThumbnailUpload}?api_key={apiKey}&session_id={sessionId}&time={time}";
         using HttpClient httpClient = new HttpClient();
         HttpResponseMessage response = await httpClient.GetAsync(url);
 
@@ -251,6 +352,18 @@ public static class VideoUpload
         using HttpClient httpClient = new HttpClient();
         using ByteArrayContent content = new ByteArrayContent(videoData);
         content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("video/mp4");
+        HttpResponseMessage response = await httpClient.PutAsync(presignedUploadUrl, content);
+
+        return response.IsSuccessStatusCode;
+    }
+
+    private static async Task<bool> UploadPNGataAsync(string presignedUploadUrl, byte[] data)
+    {
+        Debug.Log($"UploadPNGataAsync. {presignedUploadUrl} {data.Length}");
+
+        using HttpClient httpClient = new HttpClient();
+        using ByteArrayContent content = new ByteArrayContent(data);
+        content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/png");
         HttpResponseMessage response = await httpClient.PutAsync(presignedUploadUrl, content);
 
         return response.IsSuccessStatusCode;
