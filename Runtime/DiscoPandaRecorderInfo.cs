@@ -12,7 +12,7 @@ public class DiscoPandaRecorderInfo : ScriptableObject
 #if UNITY_EDITOR
             if (asset == null)
             {
-                var resourcesPath = Path.Join(Application.dataPath, "Resources");
+                var resourcesPath = Path.Combine(Application.dataPath, "Resources");
                 
                 if (!Directory.Exists(resourcesPath))
                     Directory.CreateDirectory(resourcesPath);

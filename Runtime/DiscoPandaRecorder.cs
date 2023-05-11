@@ -149,7 +149,7 @@ public static class DiscoPandaRecorder
             string finishedSubfolderPath = Path.GetDirectoryName(finishedProcess.StartInfo.Arguments.Split('"')[1]);
             DeleteScreenshots(finishedSubfolderPath);
 
-            _ = VideoUpload.UploadVideoAsync(Path.Join(finishedSubfolderPath, "output.mp4"), captureInfo.startTime, captureInfo.endTime);
+            _ = VideoUpload.UploadVideoAsync(Path.Combine(finishedSubfolderPath, "output.mp4"), captureInfo.startTime, captureInfo.endTime);
         }
     }
 
