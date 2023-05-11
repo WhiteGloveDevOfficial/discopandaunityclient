@@ -7,7 +7,7 @@ public static partial class DiscoPandaRecorderRuntime
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterAssembliesLoaded)]
     private static void Initialize()
     {
-        DiscoPandaRecorder.ffmpegPath = Path.Combine(Application.dataPath, "Resources", "ffmpeg.exe");
+        DiscoPandaRecorder.ffmpegPath = Path.Combine(Application.dataPath, "Resources", "ffmpeg-windows.exe");
 
         DiscoPandaRecorder.OnRecordingStarted = () =>
         {
