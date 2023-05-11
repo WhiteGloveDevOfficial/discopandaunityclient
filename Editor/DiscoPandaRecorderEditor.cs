@@ -50,7 +50,7 @@ static class DiscoPandaRecorderEditor
         {
             operatingSystem = "ubuntu";
         }
-        Debug.Log(operatingSystem);
+
         var assets = AssetDatabase.FindAssets("ffmpeg-" + operatingSystem);
         var assetPath = AssetDatabase.GUIDToAssetPath(assets[0]);
         DiscoPandaRecorder.ffmpegPath = Path.GetFullPath(assetPath);
