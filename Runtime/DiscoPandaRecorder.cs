@@ -6,6 +6,8 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using System.Net.Http;
 using Newtonsoft.Json;
+using UnityEngine.Rendering;
+using UnityEngine.Profiling;
 
 public static class DiscoPandaRecorder
 {
@@ -14,6 +16,10 @@ public static class DiscoPandaRecorder
     private static int videoResolutionHeight = 480;
     private static int videoBitRate = 1000;
     private static string tempFolderPath = "TempVideos";
+
+    private static int screenResolutionWidth = Screen.width;
+    private static int screenResolutionHeight = Screen.height;
+
     public static string ffmpegPath;
 
     private static bool isRecording;
@@ -32,6 +38,8 @@ public static class DiscoPandaRecorder
     private static Queue<CaptureInfo> processesQueue = new Queue<CaptureInfo>();
     private static RenderTexture renderTexture;
 
+    public static Camera CaptureCamera { get; private set; }
+
     public static System.Action OnRecordingStarted { get; set; }
     public static System.Action OnRecordingStopped { get; set; }
 
@@ -47,8 +55,33 @@ public static class DiscoPandaRecorder
         if (Directory.Exists(folderPath))
             Directory.Delete(folderPath, true);
 
+        if (renderTexture == null)
+            renderTexture = new RenderTexture(screenResolutionWidth, screenResolutionHeight, 24);
+
+        if (commandBuffer == null)
+            commandBuffer = new CommandBuffer();
+
+        commandBuffer.name = "CaptureScreen";
+        commandBuffer.Blit(null, renderTexture);
+        commandBuffer.RequestAsyncReadback(renderTexture, OnCompleteReadback);
+
         Directory.CreateDirectory(folderPath);
         StartRecording();
+    }
+
+    private static bool InitializeCapturing()
+    {
+        if (CaptureCamera != null)
+            return true;
+
+        // Find camera to capture
+        CaptureCamera = Camera.main;
+
+        if (CaptureCamera == null)
+            return false;
+
+        CaptureCamera.AddCommandBuffer(CameraEvent.AfterImageEffects, commandBuffer);
+        return true;
     }
 
     public static void StartRecording()
@@ -84,13 +117,15 @@ public static class DiscoPandaRecorder
                interval.Milliseconds;
     }
 
+    static CommandBuffer commandBuffer;
+
     public static void CaptureFrames()
     {
         if (!isRecording) return;
-
         if (!Application.isPlaying) return;
+        if (!InitializeCapturing()) return;
 
-        frameCount++;
+        //frameCount++;
         var timeSinceRecordingStarted = GetCurrentMilliseconds();
 
         // Check if it's time to create a video from the screenshots
@@ -114,29 +149,17 @@ public static class DiscoPandaRecorder
             frameCount = 0;
             chunkStartTime = timeSinceRecordingStarted;
             currentSubfolderPath = CreateNewSubfolder();
-            renderTexture = new RenderTexture(videoResolutionWidth, videoResolutionHeight, 24);
+
+            if (renderTexture == null) 
+                renderTexture = new RenderTexture(screenResolutionWidth, screenResolutionHeight, 24);
         }
-
-        // Set the camera's target texture to the RenderTexture
-        Camera.main.targetTexture = renderTexture;
-
-        // Render the scene using the camera
-        Camera.main.Render();
-
-        // Read the pixels from the RenderTexture and save them to the subfolder
-        Texture2D screenshot = new Texture2D(videoResolutionWidth, videoResolutionHeight, TextureFormat.RGB24, false);
-        RenderTexture.active = renderTexture;
-        screenshot.ReadPixels(new Rect(0, 0, videoResolutionWidth, videoResolutionHeight), 0, 0);
-        byte[] bytes = screenshot.EncodeToPNG();
-        string screenshotPath = Path.Combine(currentSubfolderPath, $"frame{frameCount}.png");
-        File.WriteAllBytes(screenshotPath, bytes);
-
-        // Reset the camera's target texture
-        Camera.main.targetTexture = null;
 
         // Check if it's time to send a thumbnail
         if (Time.frameCount % captureFrameRate == 0 && currentSubfolderPath != null)
         {
+            Texture2D screenshot = new Texture2D(Screen.width, Screen.height, TextureFormat.RGBA32, false);
+            screenshot.ReadPixels(new Rect(0, 0, Screen.width, Screen.height), 0, 0);
+            byte[] bytes = screenshot.EncodeToPNG();
             _ = VideoUpload.UploadThumbnailAsync(bytes, timeSinceRecordingStarted);
         }
 
@@ -147,11 +170,62 @@ public static class DiscoPandaRecorder
 
             System.Diagnostics.Process finishedProcess = captureInfo.process;
             string finishedSubfolderPath = Path.GetDirectoryName(finishedProcess.StartInfo.Arguments.Split('"')[1]);
-            DeleteScreenshots(finishedSubfolderPath);
+            //DeleteScreenshots(finishedSubfolderPath);
 
             _ = VideoUpload.UploadVideoAsync(Path.Combine(finishedSubfolderPath, "output.mp4"), captureInfo.startTime, captureInfo.endTime);
         }
     }
+
+    private static void OnCompleteReadback(AsyncGPUReadbackRequest request)
+    {
+
+        if (request.hasError)
+        {
+            Debug.LogError("Failed to read GPU texture");
+            return;
+        }
+
+        byte[] bytes = request.GetData<byte>().ToArray();
+        if (bytes == null)
+        {
+            Debug.LogError("Failed to get byte array from readback data");
+            return;
+        }
+
+        Profiler.BeginSample("AsyncGPUReadbackRequest");
+
+        // Convert the byte array into a Texture2D
+        //Texture2D screenshot = new Texture2D(videoResolutionWidth, videoResolutionHeight, TextureFormat.RGBA32, false);
+
+        Profiler.BeginSample("LoadRawTextureData");
+        screenshot.LoadRawTextureData(bytes);
+        screenshot.Apply();
+        Profiler.EndSample();
+
+        Profiler.BeginSample("EncodeToPNG");
+        // Encode the Texture2D into a PNG
+        byte[] pngBytes = screenshot.EncodeToPNG();
+        Profiler.EndSample();
+
+        Profiler.BeginSample("WriteAllBytes");
+        string screenshotPath = Path.Combine(currentSubfolderPath, $"frame{frameCount}.png");
+        File.WriteAllBytes(screenshotPath, pngBytes);
+        Profiler.EndSample();
+
+        // If it's time to send a thumbnail, do it now
+        Profiler.BeginSample("Upload");
+        if (Time.frameCount % captureFrameRate == 0 && currentSubfolderPath != null)
+        {
+            _ = VideoUpload.UploadThumbnailAsync(pngBytes, GetCurrentMilliseconds());
+        }
+        Profiler.EndSample();
+
+        frameCount++;
+
+        Profiler.EndSample();
+    }
+
+    static Texture2D screenshot = new Texture2D(screenResolutionWidth, screenResolutionHeight, TextureFormat.RGBA32, false);
 
     private static string CreateNewSubfolder()
     {
