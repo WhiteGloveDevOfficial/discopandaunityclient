@@ -165,7 +165,7 @@ public static class DiscoPandaRecorder
     {
         string videoPath = Path.Combine(subfolderPath, "output.mp4").Replace("\\", "/");
         string inputPath = Path.Combine(subfolderPath, "frame%d.png").Replace("\\", "/");
-        string ffmpegArguments = $"-r {captureFrameRate} -i \"{inputPath}\" -c:v libx264 -vf \"scale={videoResolutionWidth}:{videoResolutionHeight}\" -b:v {videoBitRate}k -pix_fmt yuv420p \"{videoPath}\"";
+        string ffmpegArguments = $"-r {captureFrameRate} -i \"{inputPath}\" -c:v libx264 -vf \"scale={videoResolutionWidth}:{videoResolutionHeight}\" -b:v {videoBitRate}k -pix_fmt yuv420p -movflags frag_keyframe+empty_moov+default_base_moof \"{videoPath}\"";
 
         System.Diagnostics.ProcessStartInfo startInfo = new System.Diagnostics.ProcessStartInfo(ffmpegPath, ffmpegArguments)
         {
