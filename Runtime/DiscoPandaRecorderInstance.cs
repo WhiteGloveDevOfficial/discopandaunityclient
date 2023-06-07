@@ -18,4 +18,9 @@ public class DiscoPandaRecorderInstance : MonoBehaviour
     {
         DiscoPandaRecorder.CaptureFrames();
     }
+
+    private void OnDestroy()
+    {
+        DiscoPandaRecorder.Dispose();
+    }
 }
