@@ -6,24 +6,40 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using System.Net.Http;
 using Newtonsoft.Json;
+using UnityEngine.Rendering;
+using UnityEngine.Profiling;
+using Unity.Collections;
+using Unity.Jobs;
+using Unity.Burst;
+using Unity.Collections.LowLevel.Unsafe;
 
 public static class DiscoPandaRecorder
 {
     private static int captureFrameRate = 60;
-    private static int videoResolutionWidth = 640;
-    private static int videoResolutionHeight = 480;
+    private static int videoResolutionWidth = Screen.width;
+    private static int videoResolutionHeight = Screen.height;
     private static int videoBitRate = 1000;
     private static string tempFolderPath = "TempVideos";
+
+    private static int screenResolutionWidth = Screen.width;
+    private static int screenResolutionHeight = Screen.height;
+
     public static string ffmpegPath;
 
     private static bool isRecording;
     private static string currentSubfolderPath;
+    private static string currentFramePath;
 
     private static DateTime recordingStartTime;
     private static long chunkStartTime;
 
+    static JobHandle imageEncoderJobHandle;
+    static NativeArray<byte> ppmBytes;
+    static NativeArray<byte> ppmHeader;
+    static byte[] managedArray;
+
     struct CaptureInfo
-    { 
+    {
         public long startTime;
         public long endTime;
         public System.Diagnostics.Process process;
@@ -32,12 +48,15 @@ public static class DiscoPandaRecorder
     private static Queue<CaptureInfo> processesQueue = new Queue<CaptureInfo>();
     private static RenderTexture renderTexture;
 
-    public static System.Action OnRecordingStarted { get; set; }
-    public static System.Action OnRecordingStopped { get; set; }
+    public static Camera CaptureCamera { get; set;}
+    public static Action OnRecordingStarted { get; set; }
+    public static Action OnRecordingStopped { get; set; }
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
     private static void Initialize()
     {
+        Log($"Capture resolution {videoResolutionWidth} {videoResolutionHeight}");
+
         // Set the capture frame rate
         Time.captureFramerate = captureFrameRate;
         // Ensure the temp folder exists
@@ -47,8 +66,52 @@ public static class DiscoPandaRecorder
         if (Directory.Exists(folderPath))
             Directory.Delete(folderPath, true);
 
+        if (renderTexture == null)
+        {
+            RenderTextureFormat format = RenderTextureFormat.ARGB32;
+            renderTexture = new RenderTexture(screenResolutionWidth, screenResolutionHeight, 24, format);
+        }
+
+        if (commandBuffer == null)
+            commandBuffer = new CommandBuffer();
+
+        commandBuffer.name = "CaptureScreen";
+        commandBuffer.Blit(null, renderTexture);
+        commandBuffer.RequestAsyncReadback(renderTexture, OnCompleteReadback);
+
+        ppmBytes = new NativeArray<byte>(18 + (videoResolutionWidth * videoResolutionHeight) * 3, Allocator.Persistent);
+        managedArray = new byte[ppmBytes.Length];
+
+        var headerString = $"P6\n{videoResolutionWidth} {videoResolutionHeight}\n255\n";
+        var headerBytes = System.Text.Encoding.ASCII.GetBytes(headerString);
+        ppmHeader = new NativeArray<byte>(headerBytes, Allocator.Persistent);
+
         Directory.CreateDirectory(folderPath);
         StartRecording();
+    }
+
+    public static void Dispose()
+    {
+        if (ppmBytes.IsCreated)
+            ppmBytes.Dispose();
+
+        if (ppmHeader.IsCreated)
+            ppmHeader.Dispose();
+    }
+
+    private static bool InitializeCapturing()
+    {
+        if (CaptureCamera != null)
+            return true;
+
+        // Find camera to capture
+        CaptureCamera = Camera.main;
+
+        if (CaptureCamera == null)
+            return false;
+
+        CaptureCamera.AddCommandBuffer(CameraEvent.AfterImageEffects, commandBuffer);
+        return true;
     }
 
     public static void StartRecording()
@@ -57,7 +120,7 @@ public static class DiscoPandaRecorder
         isRecording = true;
 
         VideoUpload.sessionId = Guid.NewGuid().ToString();
-        Debug.Log($"VideoUpload.sessionId  {VideoUpload.sessionId}");
+        Log($"VideoUpload.sessionId  {VideoUpload.sessionId}");
 
         recordingStartTime = DateTime.Now;
 
@@ -72,7 +135,7 @@ public static class DiscoPandaRecorder
         OnRecordingStopped?.Invoke();
     }
 
-    static int frameCount = 0;
+    static int frameCount = -1;
 
     private static long GetCurrentMilliseconds()
     {
@@ -84,13 +147,15 @@ public static class DiscoPandaRecorder
                interval.Milliseconds;
     }
 
+    static CommandBuffer commandBuffer;
+
     public static void CaptureFrames()
     {
         if (!isRecording) return;
-
         if (!Application.isPlaying) return;
+        if (!InitializeCapturing()) return;
 
-        frameCount++;
+        //frameCount++;
         var timeSinceRecordingStarted = GetCurrentMilliseconds();
 
         // Check if it's time to create a video from the screenshots
@@ -103,7 +168,7 @@ public static class DiscoPandaRecorder
                 process = CreateVideoFromScreenshots(currentSubfolderPath)
             };
 
-            Debug.Log($"CreateVideoFromScreenshots {chunkStartTime} {timeSinceRecordingStarted}");
+            Log($"CreateVideoFromScreenshots {chunkStartTime} {timeSinceRecordingStarted}");
 
             processesQueue.Enqueue(captureInfo);
         }
@@ -111,34 +176,23 @@ public static class DiscoPandaRecorder
         // Create a new subfolder for each 10-second segment
         if (currentSubfolderPath == null || Time.frameCount % (captureFrameRate * 10) == 0)
         {
-            frameCount = 0;
+            frameCount = -1;
             chunkStartTime = timeSinceRecordingStarted;
             currentSubfolderPath = CreateNewSubfolder();
-            renderTexture = new RenderTexture(videoResolutionWidth, videoResolutionHeight, 24);
+            currentFramePath = currentSubfolderPath + @"\frame";
+
+            if (renderTexture == null)
+                renderTexture = new RenderTexture(screenResolutionWidth, screenResolutionHeight, 24);
         }
-
-        // Set the camera's target texture to the RenderTexture
-        Camera.main.targetTexture = renderTexture;
-
-        // Render the scene using the camera
-        Camera.main.Render();
-
-        // Read the pixels from the RenderTexture and save them to the subfolder
-        Texture2D screenshot = new Texture2D(videoResolutionWidth, videoResolutionHeight, TextureFormat.RGB24, false);
-        RenderTexture.active = renderTexture;
-        screenshot.ReadPixels(new Rect(0, 0, videoResolutionWidth, videoResolutionHeight), 0, 0);
-        byte[] bytes = screenshot.EncodeToPNG();
-        string screenshotPath = Path.Combine(currentSubfolderPath, $"frame{frameCount}.png");
-        File.WriteAllBytes(screenshotPath, bytes);
-
-        // Reset the camera's target texture
-        Camera.main.targetTexture = null;
 
         // Check if it's time to send a thumbnail
-        if (Time.frameCount % captureFrameRate == 0 && currentSubfolderPath != null)
-        {
-            _ = VideoUpload.UploadThumbnailAsync(bytes, timeSinceRecordingStarted);
-        }
+        //if (Time.frameCount % captureFrameRate == 0 && currentSubfolderPath != null)
+        //{
+        //    Texture2D screenshot = new Texture2D(Screen.width, Screen.height, TextureFormat.RGBA32, false);
+        //    screenshot.ReadPixels(new Rect(0, 0, Screen.width, Screen.height), 0, 0);
+        //    byte[] bytes = screenshot.EncodeToPNG();
+        //    _ = VideoUpload.UploadThumbnailAsync(bytes, timeSinceRecordingStarted);
+        //}
 
         // If there's a finished process, delete the corresponding screenshots
         while (processesQueue.Count > 0 && processesQueue.Peek().process.HasExited)
@@ -153,19 +207,157 @@ public static class DiscoPandaRecorder
         }
     }
 
+    private static void OnCompleteReadback(AsyncGPUReadbackRequest request)
+    {
+        if (request.hasError)
+        {
+            Debug.LogError("Failed to read GPU texture");
+            return;
+        }
+
+        NativeArray<byte> bytes = request.GetData<byte>();
+
+        if (!bytes.IsCreated || bytes.Length == 0)
+        {
+            Debug.LogError("Failed to get byte array from readback data");
+            return;
+        }
+
+        imageEncoderJobHandle.Complete();
+
+        if (frameCount >= 0)
+        {
+            string screenshotPath = GetScreenshotPath();
+            WriteBytes(screenshotPath);
+        }
+
+        EncodeToPPM(bytes);
+        bytes.Dispose();
+
+        //UploadThumbnail(encodedBytes);
+
+        frameCount++;
+    }
+
+    static void WriteBytes(string path)
+    {
+        ppmBytes.CopyTo(managedArray);
+
+        Task.Run(async () =>
+        {
+            await SaveByteArrayToFileAsync(managedArray, path);
+        });
+    }
+
+    public static async Task SaveByteArrayToFileAsync(byte[] bytes, string path)
+    {
+        const int BufferSize = 65536;
+        await using var fileStream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None, BufferSize, FileOptions.Asynchronous);
+
+        // Write the bytes to the file
+        await fileStream.WriteAsync(bytes.AsMemory(0, bytes.Length));
+    }
+
+    private static void UploadThumbnail(byte[] encodedBytes)
+    {
+        // If it's time to send a thumbnail, do it now
+        if (Time.frameCount % captureFrameRate == 0 && currentSubfolderPath != null)
+        {
+            _ = VideoUpload.UploadThumbnailAsync(encodedBytes, GetCurrentMilliseconds());
+        }
+    }
+
+    private static string GetScreenshotPath()
+    {
+        return currentFramePath + frameCount + ".ppm";
+    }
+
+    private static void EncodeToPPM(NativeArray<byte> bytes)
+    {
+        var pixelCount = bytes.Length / 4;
+        var headerLength = ppmHeader.Length;
+
+        var headerJob = new CopyArrayJob()
+        {
+            input = ppmHeader,
+            output = ppmBytes
+        }.Schedule();
+
+        imageEncoderJobHandle = new PPMEncoderJob()
+        {
+            headerLength = headerLength,
+            input = bytes,
+            output = ppmBytes
+        }.Schedule(pixelCount, 64, headerJob);
+    }
+
+    [BurstCompile]
+    public struct CopyArrayJob : IJob
+    {
+        [ReadOnly] public NativeArray<byte> input;
+        [WriteOnly] public NativeArray<byte> output;
+
+        public void Execute()
+        {
+            for (int i = 0; i < input.Length; i++)
+            {
+                output[i] = input[i];
+            }
+        }
+    }
+
+    [BurstCompile]
+    public struct PPMEncoderJob : IJobParallelFor
+    {
+        [ReadOnly] public int headerLength;
+        [ReadOnly, NativeDisableParallelForRestriction] public NativeArray<byte> input;
+        [WriteOnly, NativeDisableParallelForRestriction] public NativeArray<byte> output;
+
+        public void Execute(int i)
+        {
+            int inputIndex = (i * 4);
+            int outputIndex = (i * 3) + headerLength;
+
+            output[outputIndex] = input[inputIndex];
+            output[outputIndex + 1] = input[inputIndex + 1];
+            output[outputIndex + 2] = input[inputIndex + 2];
+        }
+    }
+
+    private static string GetFFmpegArguments(string videoPath, string inputPath)
+    {
+        return $"-f image2 " +
+               $"-r {captureFrameRate} " +
+               $"-i \"{inputPath}\" " +
+               $"-c:v libx264 " +
+               $"-vf \"scale={videoResolutionWidth}:{videoResolutionHeight}\" " +
+               $"-b:v {videoBitRate}k " +
+               $"-pix_fmt yuv420p " +
+               $"-movflags frag_keyframe+empty_moov+default_base_moof " +
+               $"\"{videoPath}\"";
+    }
+
     private static string CreateNewSubfolder()
     {
         string subfolderPath = Path.Combine(Application.persistentDataPath, tempFolderPath, $"{DateTime.Now:yyyyMMdd_HHmmss}");
         subfolderPath = subfolderPath.Replace("\\", "/");
         Directory.CreateDirectory(subfolderPath);
+        Log($"CreateNewSubfolder:{subfolderPath}");
         return subfolderPath;
+    }
+
+    private static void Log(string message)
+    {
+#if ENABLE_DISCOPANDA_DEBUGGING
+        Debug.Log(message);
+#endif
     }
 
     private static System.Diagnostics.Process CreateVideoFromScreenshots(string subfolderPath)
     {
         string videoPath = Path.Combine(subfolderPath, "output.mp4").Replace("\\", "/");
         string inputPath = Path.Combine(subfolderPath, "frame%d.png").Replace("\\", "/");
-        string ffmpegArguments = $"-r {captureFrameRate} -i \"{inputPath}\" -c:v libx264 -vf \"scale={videoResolutionWidth}:{videoResolutionHeight}\" -b:v {videoBitRate}k -pix_fmt yuv420p -movflags frag_keyframe+empty_moov+default_base_moof \"{videoPath}\"";
+        string ffmpegArguments = GetFFmpegArguments(videoPath, inputPath);
 
         System.Diagnostics.ProcessStartInfo startInfo = new System.Diagnostics.ProcessStartInfo(ffmpegPath, ffmpegArguments)
         {
@@ -193,18 +385,16 @@ public static class DiscoPandaRecorder
 
     private static void FFmpegLogHandler(object sender, System.Diagnostics.DataReceivedEventArgs e)
     {
-#if ENABLE_DISCOPANDA_DEBUGGING
         if (!string.IsNullOrEmpty(e.Data))
         {
-            Debug.Log($"FFmpeg: {e.Data}");
+            Log($"FFmpeg: {e.Data}");
         }
-#endif
     }
 
     private static void DeleteScreenshots(string subfolderPath)
     {
         DirectoryInfo directoryInfo = new DirectoryInfo(subfolderPath);
-        FileInfo[] screenshots = directoryInfo.GetFiles("*.png");
+        FileInfo[] screenshots = directoryInfo.GetFiles("*.ppm");
 
         bool isFirst = true;
         foreach (FileInfo screenshot in screenshots)

@@ -70,6 +70,7 @@ static class DiscoPandaRecorderEditor
         {
             Debug.Log("DiscoPandaRecorder.OnRecordingStopped");
             EditorApplication.update -= DiscoPandaRecorder.CaptureFrames;
+            DiscoPandaRecorder.Dispose();
         };
     }
 
