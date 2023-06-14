@@ -326,7 +326,15 @@ public static class DiscoPandaRecorder
 
     private static string GetFFmpegArguments(string videoPath, string inputPath)
     {
-        return $"-f image2 -r {captureFrameRate} -i \"{inputPath}\" -c:v libx264 -vf \"scale={videoResolutionWidth}:{videoResolutionHeight}\" -b:v {videoBitRate}k -pix_fmt yuv420p \"{videoPath}\"";
+        return $"-f image2 " +
+               $"-r {captureFrameRate} " +
+               $"-i \"{inputPath}\" " +
+               $"-c:v libx264 " +
+               $"-vf \"scale={videoResolutionWidth}:{videoResolutionHeight}\" " +
+               $"-b:v {videoBitRate}k " +
+               $"-pix_fmt yuv420p " +
+               $"-movflags frag_keyframe+empty_moov+default_base_moof " +
+               $"\"{videoPath}\"";
     }
 
     private static string CreateNewSubfolder()
@@ -348,8 +356,7 @@ public static class DiscoPandaRecorder
     private static System.Diagnostics.Process CreateVideoFromScreenshots(string subfolderPath)
     {
         string videoPath = Path.Combine(subfolderPath, "output.mp4").Replace("\\", "/");
-        string inputPath = Path.Combine(subfolderPath, $"frame%d.ppm").Replace("\\", "/");
-
+        string inputPath = Path.Combine(subfolderPath, "frame%d.png").Replace("\\", "/");
         string ffmpegArguments = GetFFmpegArguments(videoPath, inputPath);
 
         System.Diagnostics.ProcessStartInfo startInfo = new System.Diagnostics.ProcessStartInfo(ffmpegPath, ffmpegArguments)
