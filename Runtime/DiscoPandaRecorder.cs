@@ -356,7 +356,7 @@ public static class DiscoPandaRecorder
     private static System.Diagnostics.Process CreateVideoFromScreenshots(string subfolderPath)
     {
         string videoPath = Path.Combine(subfolderPath, "output.mp4").Replace("\\", "/");
-        string inputPath = Path.Combine(subfolderPath, "frame%d.png").Replace("\\", "/");
+        string inputPath = Path.Combine(subfolderPath, "frame%d.ppm").Replace("\\", "/");
         string ffmpegArguments = GetFFmpegArguments(videoPath, inputPath);
 
         System.Diagnostics.ProcessStartInfo startInfo = new System.Diagnostics.ProcessStartInfo(ffmpegPath, ffmpegArguments)
