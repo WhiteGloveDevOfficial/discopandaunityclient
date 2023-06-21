@@ -1,18 +1,14 @@
 using System.IO;
 using UnityEngine;
 
-public static partial class DiscoPandaRecorderRuntime
+public static class DiscoPandaRecorderRuntime
 {
 #if !UNITY_EDITOR
-    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterAssembliesLoaded)]
-    private static void Initialize()
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+    public static void Initialize()
     {
         DiscoPandaRecorder.ffmpegPath = Path.Combine(Application.dataPath, "Resources", "ffmpeg-windows.exe");
-
-        DiscoPandaRecorder.OnRecordingStarted = () =>
-        {
-            DiscoPandaRecorderInstance.EnsureInstanceExists();
-        };
+        DiscoPandaRecorderInstance.EnsureInstanceExists();
     }
 #endif
 }
