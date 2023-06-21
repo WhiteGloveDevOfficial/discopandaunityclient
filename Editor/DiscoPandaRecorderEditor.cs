@@ -9,7 +9,6 @@ static class DiscoPandaRecorderEditor
 {
     static DiscoPandaRecorderEditor()
     {
-        //Debug.Log("DiscoPandaRecorderEditor");
         EditorApplication.delayCall = () => { CheckForAPIKEY(); };
         InitializeEditorSupport();
 

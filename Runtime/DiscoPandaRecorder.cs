@@ -1,4 +1,4 @@
-//#define ENABLE_DISCOPANDA_DEBUGGING
+#define ENABLE_DISCOPANDA_DEBUGGING
 using System;
 using System.IO;
 using UnityEngine;
@@ -56,25 +56,13 @@ public static class DiscoPandaRecorder
 
     private static float CaptureFrameDelay => 1f / captureFrameRate;
 
-    //[RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
     private static void Initialize()
     {
         Log($"Capture resolution {videoResolutionWidth} {videoResolutionHeight}");
 
         DeleteTempFolder();
 
-        if (renderTexture == null)
-        {
-            RenderTextureFormat format = RenderTextureFormat.ARGB32;
-            renderTexture = new RenderTexture(screenResolutionWidth, screenResolutionHeight, 24, format);
-        }
-
-        if (commandBuffer == null)
-            commandBuffer = new CommandBuffer();
-
-        commandBuffer.name = "CaptureScreen";
-        commandBuffer.Blit(null, renderTexture);
-        commandBuffer.RequestAsyncReadback(renderTexture, OnCompleteReadback);
+        InitializeCommandBuffer();
 
         ppmBytes = new NativeArray<byte>(18 + (videoResolutionWidth * videoResolutionHeight) * 3, Allocator.Persistent);
         managedArray = new byte[ppmBytes.Length];
@@ -84,6 +72,28 @@ public static class DiscoPandaRecorder
         ppmHeader = new NativeArray<byte>(headerBytes, Allocator.Persistent);
 
         Directory.CreateDirectory(GetTempFolderPath());
+    }
+
+    private static void InitializeRenderTexture()
+    {
+        if (renderTexture == null)
+        {
+            RenderTextureFormat format = RenderTextureFormat.ARGB32;
+            renderTexture = new RenderTexture(screenResolutionWidth, screenResolutionHeight, 24, format);
+        }
+    }
+
+    private static void InitializeCommandBuffer()
+    {
+        if (commandBuffer != null)
+            return;
+
+        InitializeRenderTexture();
+
+        commandBuffer = new CommandBuffer();
+        commandBuffer.name = "CaptureScreen";
+        commandBuffer.Blit(null, renderTexture);
+        commandBuffer.RequestAsyncReadback(renderTexture, OnCompleteReadback);
     }
 
     private static void DeleteTempFolder()
@@ -126,6 +136,22 @@ public static class DiscoPandaRecorder
 
         CaptureCamera.AddCommandBuffer(CameraEvent.AfterImageEffects, commandBuffer);
         return true;
+    }
+
+    public static void SetCaptureCamera(Camera camera)
+    {
+        if (CaptureCamera != null)
+        {
+            CaptureCamera.RemoveCommandBuffer(CameraEvent.AfterImageEffects, commandBuffer);
+        }
+
+        CaptureCamera = camera;
+        InitializeCommandBuffer();
+
+        if (CaptureCamera != null)
+        {
+            CaptureCamera.AddCommandBuffer(CameraEvent.AfterImageEffects, commandBuffer);
+        }
     }
 
     public static void StartRecording()

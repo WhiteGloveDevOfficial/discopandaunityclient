@@ -14,7 +14,7 @@ public class DiscoPandaRecorderInstance : MonoBehaviour
         }
     }
 
-    private void Start()
+    private void Awake()
     {
         DiscoPandaRecorder.StartRecording();
     }
