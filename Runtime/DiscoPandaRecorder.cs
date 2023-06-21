@@ -33,6 +33,7 @@ public static class DiscoPandaRecorder
     private static DateTime recordingStartTime;
     private static long chunkStartTime;
     private static float timeSinceLastFrame;
+    private static int clipFragmentIndex;
 
     static JobHandle imageEncoderJobHandle;
     static NativeArray<byte> ppmBytes;
@@ -60,12 +61,7 @@ public static class DiscoPandaRecorder
     {
         Log($"Capture resolution {videoResolutionWidth} {videoResolutionHeight}");
 
-        // Ensure the temp folder exists
-        var folderPath = Path.Combine(Application.persistentDataPath, tempFolderPath);
-
-        // Remove old videos
-        if (Directory.Exists(folderPath))
-            Directory.Delete(folderPath, true);
+        DeleteTempFolder();
 
         if (renderTexture == null)
         {
@@ -87,7 +83,20 @@ public static class DiscoPandaRecorder
         var headerBytes = System.Text.Encoding.ASCII.GetBytes(headerString);
         ppmHeader = new NativeArray<byte>(headerBytes, Allocator.Persistent);
 
-        Directory.CreateDirectory(folderPath);
+        Directory.CreateDirectory(GetTempFolderPath());
+    }
+
+    private static void DeleteTempFolder()
+    {
+        string folderPath = GetTempFolderPath();
+
+        if (Directory.Exists(folderPath))
+            Directory.Delete(folderPath, true);
+    }
+
+    private static string GetTempFolderPath()
+    {
+        return Path.Combine(Application.persistentDataPath, tempFolderPath);
     }
 
     public static void Dispose()
@@ -182,9 +191,14 @@ public static class DiscoPandaRecorder
 
             System.Diagnostics.Process finishedProcess = captureInfo.process;
             string finishedSubfolderPath = Path.GetDirectoryName(finishedProcess.StartInfo.Arguments.Split('"')[1]);
-            //DeleteScreenshots(finishedSubfolderPath);
+            DeleteScreenshots(finishedSubfolderPath);
 
-            _ = VideoUpload.UploadVideoAsync(Path.Combine(finishedSubfolderPath, "output.mp4"), captureInfo.startTime, captureInfo.endTime);
+            string apiKey = DiscoPandaRecorderInfo.Asset.APIKEY;
+
+            Task.Run(async () =>
+            {
+                await VideoUpload.UploadVideoAsync(Path.Combine(finishedSubfolderPath, "output.mp4"), captureInfo.startTime, captureInfo.endTime, apiKey);
+            });             
         }
     }
 
@@ -197,12 +211,10 @@ public static class DiscoPandaRecorder
         {
             var captureInfo = new CaptureInfo()
             {
-                startTime = chunkStartTime,
-                endTime = timeSinceRecordingStarted,
+                startTime = clipFragmentIndex * 10000,
+                endTime = ++clipFragmentIndex * 10000,
                 process = CreateVideoFromScreenshots(currentSubfolderPath)
             };
-
-            Log($"CreateVideoFromScreenshots {chunkStartTime} {timeSinceRecordingStarted}");
 
             processesQueue.Enqueue(captureInfo);
         }
@@ -376,7 +388,7 @@ public static class DiscoPandaRecorder
         return subfolderPath;
     }
 
-    private static void Log(string message)
+    public static void Log(string message)
     {
 #if ENABLE_DISCOPANDA_DEBUGGING
         Debug.Log(message);
@@ -426,15 +438,8 @@ public static class DiscoPandaRecorder
         DirectoryInfo directoryInfo = new DirectoryInfo(subfolderPath);
         FileInfo[] screenshots = directoryInfo.GetFiles("*.ppm");
 
-        bool isFirst = true;
         foreach (FileInfo screenshot in screenshots)
         {
-            if (isFirst)
-            {
-                isFirst = false;
-                continue;
-            }
-
             File.Delete(screenshot.FullName);
         }
     }
@@ -447,20 +452,20 @@ public static class VideoUpload
     private static string apiUrlVideoUpload = "https://fox2fi7x68.execute-api.eu-west-1.amazonaws.com/prod/video-upload";
     private static string apiUrlThumbnailUpload = "https://fox2fi7x68.execute-api.eu-west-1.amazonaws.com/prod/thumbnail-upload";
 
-    public static async Task UploadVideoAsync(string videoPath, long startTime, long endTime)
+    public static async Task UploadVideoAsync(string videoPath, long startTime, long endTime, string apiKey)
     {
-        Debug.Log($"UploadVideoAsync. {videoPath}");
+        DiscoPandaRecorder.Log($"UploadVideoAsync. {videoPath}");
 
         try
         {
-            string presignedUploadUrl = await GetPresignedVideoUploadUrlAsync(startTime, endTime);
+            string presignedUploadUrl = await GetPresignedVideoUploadUrlAsync(startTime, endTime, apiKey);
             if (presignedUploadUrl == null)
             {
                 Debug.LogError("Error getting presigned URL.");
                 return;
             }
 
-            Debug.Log($"presignedUploadUrl. {presignedUploadUrl}");
+            DiscoPandaRecorder.Log($"presignedUploadUrl. {presignedUploadUrl}");
 
             string videoFilePath = $"{videoPath}";
             byte[] videoData;
@@ -477,7 +482,7 @@ public static class VideoUpload
             bool uploadSuccess = await UploadVideoDataAsync(presignedUploadUrl, videoData);
             if (uploadSuccess)
             {
-                Debug.Log("Video uploaded successfully.");
+                DiscoPandaRecorder.Log("Video uploaded successfully.");
             }
             else
             {
@@ -488,11 +493,22 @@ public static class VideoUpload
         {
             Debug.LogException(e);
         }
+        finally
+        {
+#if !ENABLE_DISCOPANDA_DEBUGGING
+            if (File.Exists(videoPath))
+                File.Delete(videoPath);
+
+            string videoFolderPath = Path.GetDirectoryName(videoPath);
+            if (Directory.Exists(videoFolderPath))
+                Directory.Delete(videoFolderPath);
+#endif
+        }
     }
 
     public static async Task UploadThumbnailAsync(byte[] fileData, long time)
     {
-        Debug.Log($"UploadThumbnailAsync.");
+        DiscoPandaRecorder.Log($"UploadThumbnailAsync.");
 
         try
         {
@@ -503,12 +519,12 @@ public static class VideoUpload
                 return;
             }
 
-            Debug.Log($"presignedUploadUrl. {presignedUploadUrl}");
+            DiscoPandaRecorder.Log($"presignedUploadUrl. {presignedUploadUrl}");
 
             bool uploadSuccess = await UploadPNGataAsync(presignedUploadUrl, fileData);
             if (uploadSuccess)
             {
-                Debug.Log("File uploaded successfully.");
+                DiscoPandaRecorder.Log("File uploaded successfully.");
             }
             else
             {
@@ -521,10 +537,8 @@ public static class VideoUpload
         }
     }
 
-    private static async Task<string> GetPresignedVideoUploadUrlAsync(long startTime, long endTime)
+    private static async Task<string> GetPresignedVideoUploadUrlAsync(long startTime, long endTime, string apiKey)
     {
-        string apiKey = DiscoPandaRecorderInfo.Asset.APIKEY;
-
         string url = $"{apiUrlVideoUpload}?api_key={apiKey}&session_id={sessionId}&start={startTime}&end={endTime}";
         using HttpClient httpClient = new HttpClient();
         HttpResponseMessage response = await httpClient.GetAsync(url);
@@ -538,7 +552,7 @@ public static class VideoUpload
 
         string responseBody = await response.Content.ReadAsStringAsync();
         var jsonResponse = JsonConvert.DeserializeObject<PresignedUrlData>(responseBody);
-        Debug.Log(responseBody);
+        DiscoPandaRecorder.Log(responseBody);
         string presignedUploadUrl = jsonResponse.Url;
 
         return presignedUploadUrl;
@@ -559,7 +573,7 @@ public static class VideoUpload
 
         string responseBody = await response.Content.ReadAsStringAsync();
         var jsonResponse = JsonConvert.DeserializeObject<PresignedUrlData>(responseBody);
-        Debug.Log(responseBody);
+        DiscoPandaRecorder.Log(responseBody);
         string presignedUploadUrl = jsonResponse.Url;
 
         return presignedUploadUrl;
@@ -567,7 +581,7 @@ public static class VideoUpload
 
     private static async Task<bool> UploadVideoDataAsync(string presignedUploadUrl, byte[] videoData)
     {
-        Debug.Log($"UploadVideoDataAsync. {presignedUploadUrl} {videoData.Length}");
+        DiscoPandaRecorder.Log($"UploadVideoDataAsync. {presignedUploadUrl} {videoData.Length}");
 
         using HttpClient httpClient = new HttpClient();
         using ByteArrayContent content = new ByteArrayContent(videoData);
@@ -579,7 +593,7 @@ public static class VideoUpload
 
     private static async Task<bool> UploadPNGataAsync(string presignedUploadUrl, byte[] data)
     {
-        Debug.Log($"UploadPNGataAsync. {presignedUploadUrl} {data.Length}");
+        DiscoPandaRecorder.Log($"UploadPNGataAsync. {presignedUploadUrl} {data.Length}");
 
         using HttpClient httpClient = new HttpClient();
         using ByteArrayContent content = new ByteArrayContent(data);
