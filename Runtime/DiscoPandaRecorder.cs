@@ -251,7 +251,7 @@ public static class DiscoPandaRecorder
             frameCount = -1;
             chunkStartTime = timeSinceRecordingStarted;
             currentSubfolderPath = CreateNewSubfolder();
-            currentFramePath = currentSubfolderPath + @"\frame";
+            currentFramePath = Path.Combine(currentSubfolderPath, "frame");
 
             if (renderTexture == null)
                 renderTexture = new RenderTexture(screenResolutionWidth, screenResolutionHeight, 24);
