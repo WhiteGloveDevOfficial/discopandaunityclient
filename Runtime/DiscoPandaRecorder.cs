@@ -15,7 +15,7 @@ using Unity.Collections.LowLevel.Unsafe;
 
 public static class DiscoPandaRecorder
 {
-    private static int captureFrameRate = 60;
+    private static int captureFrameRate = 30;
     private static int videoResolutionWidth = Screen.width;
     private static int videoResolutionHeight = Screen.height;
     private static int videoBitRate = 1000;
@@ -32,6 +32,7 @@ public static class DiscoPandaRecorder
 
     private static DateTime recordingStartTime;
     private static long chunkStartTime;
+    private static float timeSinceLastFrame;
 
     static JobHandle imageEncoderJobHandle;
     static NativeArray<byte> ppmBytes;
@@ -52,13 +53,13 @@ public static class DiscoPandaRecorder
     public static Action OnRecordingStarted { get; set; }
     public static Action OnRecordingStopped { get; set; }
 
-    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+    private static float CaptureFrameDelay => 1f / captureFrameRate;
+
+    //[RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
     private static void Initialize()
     {
         Log($"Capture resolution {videoResolutionWidth} {videoResolutionHeight}");
 
-        // Set the capture frame rate
-        Time.captureFramerate = captureFrameRate;
         // Ensure the temp folder exists
         var folderPath = Path.Combine(Application.persistentDataPath, tempFolderPath);
 
@@ -87,16 +88,20 @@ public static class DiscoPandaRecorder
         ppmHeader = new NativeArray<byte>(headerBytes, Allocator.Persistent);
 
         Directory.CreateDirectory(folderPath);
-        StartRecording();
     }
 
     public static void Dispose()
     {
+        imageEncoderJobHandle.Complete();
+
         if (ppmBytes.IsCreated)
             ppmBytes.Dispose();
 
         if (ppmHeader.IsCreated)
             ppmHeader.Dispose();
+
+        if (bytes.IsCreated)
+            bytes.Dispose();
     }
 
     private static bool InitializeCapturing()
@@ -116,6 +121,8 @@ public static class DiscoPandaRecorder
 
     public static void StartRecording()
     {
+        Initialize();
+
         if (isRecording) return;
         isRecording = true;
 
@@ -131,6 +138,7 @@ public static class DiscoPandaRecorder
     {
         if (!isRecording) return;
         isRecording = false;
+        Dispose();
 
         OnRecordingStopped?.Invoke();
     }
@@ -156,34 +164,7 @@ public static class DiscoPandaRecorder
         if (!InitializeCapturing()) return;
 
         //frameCount++;
-        var timeSinceRecordingStarted = GetCurrentMilliseconds();
-
-        // Check if it's time to create a video from the screenshots
-        if (Time.frameCount % (captureFrameRate * 10) == 0 && currentSubfolderPath != null)
-        {
-            var captureInfo = new CaptureInfo()
-            {
-                startTime = chunkStartTime,
-                endTime = timeSinceRecordingStarted,
-                process = CreateVideoFromScreenshots(currentSubfolderPath)
-            };
-
-            Log($"CreateVideoFromScreenshots {chunkStartTime} {timeSinceRecordingStarted}");
-
-            processesQueue.Enqueue(captureInfo);
-        }
-
-        // Create a new subfolder for each 10-second segment
-        if (currentSubfolderPath == null || Time.frameCount % (captureFrameRate * 10) == 0)
-        {
-            frameCount = -1;
-            chunkStartTime = timeSinceRecordingStarted;
-            currentSubfolderPath = CreateNewSubfolder();
-            currentFramePath = currentSubfolderPath + @"\frame";
-
-            if (renderTexture == null)
-                renderTexture = new RenderTexture(screenResolutionWidth, screenResolutionHeight, 24);
-        }
+        //EncodeScreenshotsToVideo();
 
         // Check if it's time to send a thumbnail
         //if (Time.frameCount % captureFrameRate == 0 && currentSubfolderPath != null)
@@ -201,21 +182,62 @@ public static class DiscoPandaRecorder
 
             System.Diagnostics.Process finishedProcess = captureInfo.process;
             string finishedSubfolderPath = Path.GetDirectoryName(finishedProcess.StartInfo.Arguments.Split('"')[1]);
-            DeleteScreenshots(finishedSubfolderPath);
+            //DeleteScreenshots(finishedSubfolderPath);
 
             _ = VideoUpload.UploadVideoAsync(Path.Combine(finishedSubfolderPath, "output.mp4"), captureInfo.startTime, captureInfo.endTime);
         }
     }
 
+    private static void EncodeScreenshotsToVideo()
+    {
+        var timeSinceRecordingStarted = GetCurrentMilliseconds();
+
+        // Check if it's time to create a video from the screenshots
+        if (frameCount > 0 && frameCount % (captureFrameRate * 10) == 0 && currentSubfolderPath != null)
+        {
+            var captureInfo = new CaptureInfo()
+            {
+                startTime = chunkStartTime,
+                endTime = timeSinceRecordingStarted,
+                process = CreateVideoFromScreenshots(currentSubfolderPath)
+            };
+
+            Log($"CreateVideoFromScreenshots {chunkStartTime} {timeSinceRecordingStarted}");
+
+            processesQueue.Enqueue(captureInfo);
+        }
+
+        // Create a new subfolder for each 10-second segment
+        if (currentSubfolderPath == null || frameCount % (captureFrameRate * 10) == 0)
+        {
+            frameCount = -1;
+            chunkStartTime = timeSinceRecordingStarted;
+            currentSubfolderPath = CreateNewSubfolder();
+            currentFramePath = currentSubfolderPath + @"\frame";
+
+            if (renderTexture == null)
+                renderTexture = new RenderTexture(screenResolutionWidth, screenResolutionHeight, 24);
+        }
+    }
+
+    static NativeArray<byte> bytes;
     private static void OnCompleteReadback(AsyncGPUReadbackRequest request)
     {
+        if (!isRecording)
+            return;
+
+        timeSinceLastFrame += Time.deltaTime;
+
         if (request.hasError)
         {
             Debug.LogError("Failed to read GPU texture");
             return;
         }
 
-        NativeArray<byte> bytes = request.GetData<byte>();
+        if (bytes.IsCreated)
+            bytes.Dispose();
+
+        bytes = request.GetData<byte>();
 
         if (!bytes.IsCreated || bytes.Length == 0)
         {
@@ -225,18 +247,26 @@ public static class DiscoPandaRecorder
 
         imageEncoderJobHandle.Complete();
 
-        if (frameCount >= 0)
+        if (timeSinceLastFrame >= CaptureFrameDelay && frameCount >= 0)
         {
-            string screenshotPath = GetScreenshotPath();
-            WriteBytes(screenshotPath);
+            while (timeSinceLastFrame >= CaptureFrameDelay)
+            {
+                Log($"Time.frameCount:{Time.frameCount} timeSinceLastFrame:{timeSinceLastFrame} CaptureFrameDelay:{CaptureFrameDelay}");
+
+                string screenshotPath = GetScreenshotPath();
+                WriteBytes(screenshotPath);
+
+                timeSinceLastFrame -= CaptureFrameDelay;
+                frameCount++;
+
+                EncodeScreenshotsToVideo();
+            }
         }
 
         EncodeToPPM(bytes);
-        bytes.Dispose();
 
-        //UploadThumbnail(encodedBytes);
-
-        frameCount++;
+        if (frameCount < 0)
+            frameCount = 0;
     }
 
     static void WriteBytes(string path)

@@ -12,6 +12,23 @@ static class DiscoPandaRecorderEditor
         //Debug.Log("DiscoPandaRecorderEditor");
         EditorApplication.delayCall = () => { CheckForAPIKEY(); };
         InitializeEditorSupport();
+
+        EditorApplication.playModeStateChanged += EditorApplication_playModeStateChanged;
+    }
+
+    private static void EditorApplication_playModeStateChanged(PlayModeStateChange state)
+    {
+        switch (state)
+        {
+            case PlayModeStateChange.ExitingPlayMode:
+                DiscoPandaRecorder.StopRecording();
+                break;
+            case PlayModeStateChange.EnteredPlayMode:
+                DiscoPandaRecorder.StartRecording();
+                break;
+            default:
+                break;
+        }
     }
 
     private static void CheckForAPIKEY()
@@ -62,15 +79,14 @@ static class DiscoPandaRecorderEditor
 
         DiscoPandaRecorder.OnRecordingStarted = () =>
         {
-            Debug.Log("DiscoPandaRecorder.OnRecordingStarted");
+            //Debug.Log("DiscoPandaRecorder.OnRecordingStarted");
             EditorApplication.update += DiscoPandaRecorder.CaptureFrames;
         };
 
         DiscoPandaRecorder.OnRecordingStopped = () =>
         {
-            Debug.Log("DiscoPandaRecorder.OnRecordingStopped");
+            //Debug.Log("DiscoPandaRecorder.OnRecordingStopped");
             EditorApplication.update -= DiscoPandaRecorder.CaptureFrames;
-            DiscoPandaRecorder.Dispose();
         };
     }
 
