@@ -474,7 +474,15 @@ public static class DiscoPandaRecorder
 
 public static class VideoUpload
 {
-    public static string sessionId;
+    const string sessionVersion = "V1";
+
+    public static string _sessionId;
+    public static string sessionId
+    {
+        get { return sessionVersion + _sessionId; }
+        set { _sessionId = value; }
+    }
+
     private static string apiUrlVideoUpload = "https://fox2fi7x68.execute-api.eu-west-1.amazonaws.com/prod/video-upload";
     private static string apiUrlThumbnailUpload = "https://fox2fi7x68.execute-api.eu-west-1.amazonaws.com/prod/thumbnail-upload";
 
