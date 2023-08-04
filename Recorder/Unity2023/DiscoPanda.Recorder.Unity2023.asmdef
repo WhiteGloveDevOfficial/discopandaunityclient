@@ -1,0 +1,18 @@
+{
+    "name": "DiscoPanda.Recorder.Unity2023",
+    "rootNamespace": "",
+    "references": [
+        "GUID:3109b61417a1bcd46a4e7df3894c8c12"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_2023"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

@@ -1,0 +1,16 @@
+{
+    "name": "DiscoPanda.Recorder.Unity2018",
+    "references": [
+        "DiscoPanda.Recorder.Common"
+    ],
+    "optionalUnityReferences": [],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_2018"
+    ]
+}

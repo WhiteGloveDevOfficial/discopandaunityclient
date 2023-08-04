@@ -2,7 +2,11 @@
     "name": "DiscoPanda",
     "rootNamespace": "",
     "references": [
-        "GUID:2665a8d13d1b3f18800f46e256720795"
+        "GUID:2665a8d13d1b3f18800f46e256720795",
+        "GUID:3109b61417a1bcd46a4e7df3894c8c12",
+        "GUID:d5adbf1511ae93642a9fea7dec65f81d",
+        "GUID:bd7069c78f0e8b248b3fe406f5c3e27a",
+        "GUID:9cf3535166d719f40ba0e99625ff2e7f"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

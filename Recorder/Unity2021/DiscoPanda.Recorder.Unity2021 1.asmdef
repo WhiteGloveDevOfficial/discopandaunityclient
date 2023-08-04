@@ -1,0 +1,30 @@
+{
+    "name": "DiscoPanda.Recorder.Unity2021",
+    "rootNamespace": "",
+    "references": [
+        "DiscoPanda.Recorder.Common",
+        "Unity.Burst"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_2021"
+    ],
+    "versionDefines": [
+        {
+            "name": "com.unity.render-pipelines.universal",
+            "expression": "0.0",
+            "define": "USING_URP"
+        },
+        {
+            "name": "com.unity.render-pipelines.high-definition",
+            "expression": "0.0",
+            "define": "USING_HDRP"
+        }
+    ],
+    "noEngineReferences": false
+}

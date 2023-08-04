@@ -1,31 +1,34 @@
 using UnityEngine;
 
-public class DiscoPandaRecorderInstance : MonoBehaviour
+namespace DiscoPanda
 {
-    private static DiscoPandaRecorderInstance _instance;
-
-    public static void EnsureInstanceExists()
+    public class DiscoPandaRecorderInstance : MonoBehaviour
     {
-        if (_instance == null)
+        private static DiscoPandaRecorderInstance instance;
+
+        public static void EnsureInstanceExists()
         {
-            GameObject go = new GameObject("DiscoPandaRecorderInstance");
-            _instance = go.AddComponent<DiscoPandaRecorderInstance>();
-            DontDestroyOnLoad(go);
+            if (instance == null)
+            {
+                GameObject go = new GameObject("DiscoPandaRecorderInstance");
+                instance = go.AddComponent<DiscoPandaRecorderInstance>();
+                DontDestroyOnLoad(go);
+            }
         }
-    }
 
-    private void Awake()
-    {
-        DiscoPandaRecorder.StartRecording();
-    }
+        private void Awake()
+        {
+            DiscoPandaRecorder.StartRecording();
+        }
 
-    private void Update()
-    {
-        DiscoPandaRecorder.CaptureFrames();
-    }
+        private void Update()
+        {
+            DiscoPandaRecorder.Update();
+        }
 
-    private void OnDestroy()
-    {
-        DiscoPandaRecorder.StopRecording();
+        private void OnDestroy()
+        {
+            DiscoPandaRecorder.StopRecording();
+        }
     }
 }

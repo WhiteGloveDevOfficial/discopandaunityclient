@@ -1,8 +1,10 @@
 using System.IO;
 using UnityEngine;
 
-public static class DiscoPandaRecorderRuntime
+namespace DiscoPanda
 {
+    public static class DiscoPandaRecorderRuntime
+    {
 #if !UNITY_EDITOR
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
     public static void Initialize()
@@ -11,4 +13,5 @@ public static class DiscoPandaRecorderRuntime
         DiscoPandaRecorderInstance.EnsureInstanceExists();
     }
 #endif
+    }
 }
