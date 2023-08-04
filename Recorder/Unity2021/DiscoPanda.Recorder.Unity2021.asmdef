@@ -12,7 +12,7 @@
     "precompiledReferences": [],
     "autoReferenced": false,
     "defineConstraints": [
-        "UNITY_2021"
+        "UNITY_2021_1_OR_NEWER"
     ],
     "versionDefines": [
         {
