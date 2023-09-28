@@ -13,3 +13,7 @@ Records all play sessions of your Unity game!
    - Select `DiscoPanda/Enter API key` from the Unity Editor main menu.
    - Copy-paste your API key. If you don't have one yet, create a new account at **https://discopanda.whiteglove.dev**
    - Start your game to begin the first recording! 🎮
+
+### 3. Join our Discord server!
+<a href="https://discord.gg/7pYEYFBA8n"><img src="https://discord.com/assets/e4923594e694a21542a489471ecffa50.svg" alt="Discord" width="150"/></a>
+
