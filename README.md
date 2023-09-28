@@ -1,3 +1,8 @@
+# Discopanda 🪩🐼
+Records all play sessions of your Unity game!
+
+[discopanda-small.webm](https://github.com/WhiteGloveDevOfficial/discopandaunityclient/assets/14353118/9b9ef563-89cf-4279-9a94-c46de66af0c6)
+
 ## Get Started
 ### 1. Install DiscoPanda
    - Open `Window/Package Manager` from the Unity Editor main menu.
