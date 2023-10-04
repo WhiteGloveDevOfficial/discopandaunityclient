@@ -70,10 +70,16 @@ namespace DiscoPanda
 
         Vector2 GetMainGameViewSize()
         {
+            Vector2 resolution = new Vector2(Screen.width, Screen.height);
+
+#if UNITY_EDITOR
             System.Type T = System.Type.GetType("UnityEditor.GameView,UnityEditor");
             System.Reflection.MethodInfo GetSizeOfMainGameView = T.GetMethod("GetSizeOfMainGameView", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
             System.Object Res = GetSizeOfMainGameView.Invoke(null, null);
-            return (Vector2)Res;
+            resolution = (Vector2)Res;
+#endif
+
+            return resolution;
         }
 
         void CaptureFrame()

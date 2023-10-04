@@ -9,7 +9,7 @@ namespace DiscoPanda
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
     public static void Initialize()
     {
-        DiscoPandaRecorder.ffmpegPath = Path.Combine(Application.dataPath, "Resources", "ffmpeg-windows.exe");
+        DiscoPandaRecorder.ffmpegPath = Path.Combine(Application.dataPath, "Resources", "ffmpeg.exe");
         DiscoPandaRecorderInstance.EnsureInstanceExists();
     }
 #endif
