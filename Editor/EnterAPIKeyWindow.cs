@@ -5,8 +5,6 @@ public class EnterAPIKeyWindow : EditorWindow
 {
     private static EnterAPIKeyWindow window;
 
-    private string apiKey;
-
     [MenuItem("Window/DiscoPanda/Enter API Key")]
     public static void ShowWindow()
     {
@@ -27,13 +25,12 @@ public class EnterAPIKeyWindow : EditorWindow
 
         GUILayout.BeginVertical(); // Start Vertical Group
         EditorGUI.BeginChangeCheck();
-        apiKey = EditorGUILayout.TextField("API Key:", apiKey);
+        var newKey = EditorGUILayout.TextField("API Key:", DiscoPandaRecorderInfo.Asset.APIKEY);
         
         if (EditorGUI.EndChangeCheck()) 
         {
-            var recorderInfo = DiscoPandaRecorderInfo.Asset;
-            recorderInfo.APIKEY = apiKey;
-            EditorUtility.SetDirty(recorderInfo);
+            DiscoPandaRecorderInfo.Asset.APIKEY = newKey;
+            EditorUtility.SetDirty(DiscoPandaRecorderInfo.Asset);
             AssetDatabase.SaveAssets();
         }
 
