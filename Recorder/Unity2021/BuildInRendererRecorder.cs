@@ -16,8 +16,8 @@ namespace DiscoPanda
         Vector2 offset;
 
         byte[] bytes;
-        int width = Screen.width;
-        int height = Screen.height;
+        int width = 640;
+        int height = 480;
         bool isRecording;
 
         public event Action onCompleteFrameCapture;

@@ -14,8 +14,8 @@ namespace DiscoPanda
     {
         public static string inputFileExtension = "ppm";
         static int captureFrameRate = 30;
-        static int videoResolutionWidth = Screen.width;
-        static int videoResolutionHeight = Screen.height;
+        static int videoResolutionWidth = 640;
+        static int videoResolutionHeight = 480;
         static int videoBitRate = 1000;
         static string tempFolderPath = "TempVideos";
 
