@@ -1,135 +1,110 @@
 #if !USING_URP && !USING_HDRP
-using UnityEngine.Rendering;
 using UnityEngine;
-using Unity.Collections;
-using Unity.Jobs;
-using System.IO;
 using System;
-using System.Threading.Tasks;
+using UnityEngine.Rendering;
+using Object = UnityEngine.Object;
 
 namespace DiscoPanda
 {
     public class BuildInRendererRecorder : IRecorder
     {
-        int screenResolutionWidth = Screen.width;
-        int screenResolutionHeight = Screen.height;
-
-        int videoResolutionWidth = Screen.width;
-        int videoResolutionHeight = Screen.height;
-
         PPMEncoder ppmEncoder;
-        CommandBuffer commandBuffer;
-        RenderTexture renderTexture;
-        Camera CaptureCamera;
+        RenderTexture grabRT;
+        RenderTexture flipRT;
 
-        NativeArray<byte> bytes;
+        Vector2 scale;
+        Vector2 offset;
 
-        byte[] managedArray;
+        byte[] bytes;
+        int width = Screen.width;
+        int height = Screen.height;
         bool isRecording;
 
-        public event Action<NativeArray<byte>> onCompleteFrameCapture;
+        public event Action onCompleteFrameCapture;
 
         public void StartRecording()
         {
+            Log("StartRecording");
+
             isRecording = true;
             Initialize();
         }
 
+        private void Initialize()
+        {
+            Log("Initialize");
+
+            ppmEncoder = new PPMEncoder(width, height);
+            bytes = new byte[ppmEncoder.Size];
+
+            scale = new Vector2(1, 1);
+            offset = new Vector2(0, 0);
+
+            RenderTextureFormat format = RenderTextureFormat.ARGB32;
+
+            grabRT = new RenderTexture(width, height, 0, format);
+            flipRT = new RenderTexture(width, height, 0, format);
+        }
+
         public void StopRecording()
         {
+            Log("StopRecording");
+
             isRecording = false;
-            Dispose();
-        }
 
-        public void CaptureSourceChanged(Camera camera)
-        {
-            if (CaptureCamera != null)
-            {
-                CaptureCamera.RemoveCommandBuffer(CameraEvent.AfterImageEffects, commandBuffer);
-            }
-
-            CaptureCamera = camera;
-            InitializeCommandBuffer();
-
-            if (CaptureCamera != null)
-            {
-                CaptureCamera.AddCommandBuffer(CameraEvent.AfterImageEffects, commandBuffer);
-            }
-        }
-
-        public void SaveFrameCaptureToDisk(string screenshotPath)
-        {
-            ppmEncoder.CopyTo(managedArray);
-            FileUtility.WriteBytes(managedArray, screenshotPath);
-        }
-
-        void Initialize()
-        {
-            InitializeCommandBuffer();
-
-            ppmEncoder = new PPMEncoder(videoResolutionWidth, screenResolutionHeight);
-            managedArray = new byte[ppmEncoder.Size];
-
-        }
-
-        void InitializeCommandBuffer()
-        {
-            if (commandBuffer != null)
-                return;
-
-            InitializeRenderTexture();
-
-            commandBuffer = new CommandBuffer();
-            commandBuffer.name = "CaptureScreen";
-            commandBuffer.Blit(null, renderTexture);
-            commandBuffer.RequestAsyncReadback(renderTexture, OnCompleteReadback);
-        }
-
-        void InitializeRenderTexture()
-        {
-            if (renderTexture == null)
-            {
-                RenderTextureFormat format = RenderTextureFormat.ARGB32;
-                renderTexture = new RenderTexture(screenResolutionWidth, screenResolutionHeight, 24, format);
-            }
-        }
-
-        void Dispose()
-        {
             ppmEncoder.Dispose();
 
-            if (bytes.IsCreated)
-                bytes.Dispose();
+            if (flipRT != null) Object.Destroy(flipRT);
+            if (grabRT != null) Object.Destroy(grabRT);
+        }
+
+        public void Update()
+        {
+            CaptureFrame();
+        }
+
+        void CaptureFrame()
+        {
+            ScreenCapture.CaptureScreenshotIntoRenderTexture(grabRT);
+            Graphics.Blit(grabRT, flipRT, scale, offset);
+            AsyncGPUReadback.Request(flipRT, 0, OnCompleteReadback);
         }
 
         void OnCompleteReadback(AsyncGPUReadbackRequest request)
         {
+            Log($"OnCompleteReadback {Time.frameCount}");
             if (!isRecording)
                 return;
 
-            if (request.hasError)
-            {
-                Debug.LogError("Failed to read GPU texture");
-                return;
-            }
+            var buffer = request.GetData<byte>();
 
-            if (bytes.IsCreated)
-                bytes.Dispose();
-
-            bytes = request.GetData<byte>();
-
-            if (!bytes.IsCreated || bytes.Length == 0)
-            {
-                Debug.LogError("Failed to get byte array from readback data");
-                return;
-            }
-
+            //Log("ppmEncoder.CompleteJobs");
             ppmEncoder.CompleteJobs();
+            ppmEncoder.CopyTo(bytes);
 
+            //Log("onCompleteFrameCapture.Invoke");
             if (onCompleteFrameCapture != null)
-                onCompleteFrameCapture.Invoke(bytes);
+                onCompleteFrameCapture.Invoke();
 
-            ppmEncoder.Encode(bytes);
+            //Log("ppmEncoder.Encode");
+            ppmEncoder.Encode(buffer);
+        }
+
+        public void CaptureSourceChanged(Camera camera)
+        {
+        }
+
+        public void SaveFrameCaptureToDisk(string screenshotPath)
+        {
+            //Debug.Log("SaveFrameCaptureToDisk");
+
+            FileUtility.WriteBytes(bytes, screenshotPath);
+        }
+        static void Log(string message)
+        {
+#if ENABLE_DISCOPANDA_DEBUGGING
+            UnityEngine.Debug.Log(message);
+#endif
         }
     }
 }
