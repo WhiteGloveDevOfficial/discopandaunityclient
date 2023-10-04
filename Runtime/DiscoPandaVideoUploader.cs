@@ -10,7 +10,7 @@ namespace DiscoPanda
 {
     public static class VideoUploader
     {
-        const string sessionVersion = "V1";
+        const string sessionVersion = "V1"; 
 
         public static string _sessionId;
         public static string sessionId

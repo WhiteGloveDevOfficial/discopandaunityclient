@@ -3,21 +3,21 @@ using UnityEngine;
 using System;
 using UnityEngine.Rendering;
 using Object = UnityEngine.Object;
+using static UnityEngine.GraphicsBuffer;
 
 namespace DiscoPanda
 {
     public class BuildInRendererRecorder : IRecorder
     {
         PPMEncoder ppmEncoder;
-        RenderTexture grabRT;
-        RenderTexture flipRT;
+        RenderTexture sourceRT;
+        RenderTexture targetRT;
 
-        Vector2 scale;
-        Vector2 offset;
+        Material letterboxMaterial;
 
-        byte[] bytes;
-        int width = 640;
-        int height = 480;
+        byte[] bytes;        
+        int recordingWidth = 640;
+        int recordingHeight = 480;
         bool isRecording;
 
         public event Action onCompleteFrameCapture;
@@ -34,16 +34,21 @@ namespace DiscoPanda
         {
             Log("Initialize");
 
-            ppmEncoder = new PPMEncoder(width, height);
+            ppmEncoder = new PPMEncoder(recordingWidth, recordingHeight);
             bytes = new byte[ppmEncoder.Size];
-
-            scale = new Vector2(1, 1);
-            offset = new Vector2(0, 0);
 
             RenderTextureFormat format = RenderTextureFormat.ARGB32;
 
-            grabRT = new RenderTexture(width, height, 0, format);
-            flipRT = new RenderTexture(width, height, 0, format);
+            Vector2 gameViewSize = GetMainGameViewSize();
+            int sourceWidth = (int)gameViewSize.x;
+            int sourceHeight = (int)gameViewSize.y;
+
+            sourceRT = new RenderTexture(sourceWidth, sourceHeight, 0, format);
+            targetRT = new RenderTexture(recordingWidth, recordingHeight, 0, format);
+
+            letterboxMaterial = new Material(Shader.Find("Custom/LetterboxShader"));
+            letterboxMaterial.SetVector("_SourceRes", new Vector4(sourceRT.width, sourceRT.height, 0, 0));
+            letterboxMaterial.SetVector("_TargetRes", new Vector4(targetRT.width, targetRT.height, 0, 0));
         }
 
         public void StopRecording()
@@ -54,8 +59,8 @@ namespace DiscoPanda
 
             ppmEncoder.Dispose();
 
-            if (flipRT != null) Object.Destroy(flipRT);
-            if (grabRT != null) Object.Destroy(grabRT);
+            if (targetRT != null) Object.Destroy(targetRT);
+            if (sourceRT != null) Object.Destroy(sourceRT);
         }
 
         public void Update()
@@ -63,11 +68,19 @@ namespace DiscoPanda
             CaptureFrame();
         }
 
+        Vector2 GetMainGameViewSize()
+        {
+            System.Type T = System.Type.GetType("UnityEditor.GameView,UnityEditor");
+            System.Reflection.MethodInfo GetSizeOfMainGameView = T.GetMethod("GetSizeOfMainGameView", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+            System.Object Res = GetSizeOfMainGameView.Invoke(null, null);
+            return (Vector2)Res;
+        }
+
         void CaptureFrame()
         {
-            ScreenCapture.CaptureScreenshotIntoRenderTexture(grabRT);
-            Graphics.Blit(grabRT, flipRT, scale, offset);
-            AsyncGPUReadback.Request(flipRT, 0, OnCompleteReadback);
+            ScreenCapture.CaptureScreenshotIntoRenderTexture(sourceRT);
+            Graphics.Blit(sourceRT, targetRT, letterboxMaterial);
+            AsyncGPUReadback.Request(targetRT, 0, OnCompleteReadback);
         }
 
         void OnCompleteReadback(AsyncGPUReadbackRequest request)
