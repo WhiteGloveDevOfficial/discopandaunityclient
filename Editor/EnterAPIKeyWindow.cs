@@ -4,6 +4,7 @@ using UnityEditor;
 public class EnterAPIKeyWindow : EditorWindow
 {
     private static EnterAPIKeyWindow window;
+    private static bool hasApiKeyChanged;
 
     [MenuItem("Window/DiscoPanda/Enter API Key")]
     public static void ShowWindow()
@@ -21,45 +22,88 @@ public class EnterAPIKeyWindow : EditorWindow
 
     private void OnGUI()
     {
-        var buttonWidth = 200;
+        var marginSize = 20; // Define your desired margin size
+        var contentSpacing = 15; // Calculate the spacing between GUI sections
 
-        GUILayout.BeginVertical(); // Start Vertical Group
+        GUIStyle labelStyle = new GUIStyle(GUI.skin.label); // Create a new GUIStyle based on the default label style.
+        labelStyle.wordWrap = true; // Enable word wrapping.
+
+        // Vertical Margin at the top
+        GUILayout.Space(marginSize);
+
+        GUILayout.BeginHorizontal();
+        GUILayout.Space(marginSize);
+        GUILayout.Label("Welcome to using DiscoPanda!", EditorStyles.boldLabel);
+        GUILayout.Space(marginSize);
+        GUILayout.EndHorizontal();
+
+        GUILayout.BeginHorizontal();
+        GUILayout.Space(marginSize);
+        GUILayout.Label("If you have already created an account on our website, please copy and paste the API key from the website header here.", labelStyle);
+        GUILayout.Space(marginSize);
+        GUILayout.EndHorizontal();
+
+        GUILayout.Space(contentSpacing);
+
+        // API Key
+        GUILayout.BeginHorizontal();
+        GUILayout.Space(marginSize);
         EditorGUI.BeginChangeCheck();
+        EditorGUIUtility.labelWidth = 70;
         var newKey = EditorGUILayout.TextField("API Key:", DiscoPandaRecorderInfo.Asset.APIKEY);
-        
-        if (EditorGUI.EndChangeCheck()) 
+        if (EditorGUI.EndChangeCheck())
+        {
+            hasApiKeyChanged = true;
+        }
+        EditorGUI.BeginDisabledGroup(!hasApiKeyChanged);
+        if (GUILayout.Button("Save", GUILayout.Width(80))) // You can adjust the width as needed
         {
             DiscoPandaRecorderInfo.Asset.APIKEY = newKey;
             EditorUtility.SetDirty(DiscoPandaRecorderInfo.Asset);
             AssetDatabase.SaveAssets();
+            hasApiKeyChanged = false;
         }
+        EditorGUI.EndDisabledGroup();
+        GUILayout.Space(marginSize);
+        GUILayout.EndHorizontal();
 
-        EditorGUILayout.Space();
+        GUILayout.Space(contentSpacing);
+        GUILayout.Space(contentSpacing);
 
-        // Displaying message with clickable link to create a new account for API Key
-        GUILayout.BeginHorizontal(); // Start Horizontal Group for 'Create a new account' button
-        GUILayout.FlexibleSpace();
-        if (GUILayout.Button("Create a new account", GUILayout.Width(buttonWidth)))
+        GUILayout.BeginHorizontal();
+        GUILayout.Space(marginSize);
+        GUILayout.Label("No account yet?", EditorStyles.boldLabel);
+        GUILayout.Space(marginSize);
+        GUILayout.EndHorizontal();
+
+        // Create new account
+        GUILayout.BeginHorizontal();
+        GUILayout.Space(marginSize);
+        if (GUILayout.Button("Create a new account"))
         {
             Application.OpenURL("https://discopanda.whiteglove.dev");
         }
-        GUILayout.FlexibleSpace();
-        GUILayout.EndHorizontal(); // End Horizontal Group for 'Create a new account' button
+        GUILayout.Space(marginSize);
+        GUILayout.EndHorizontal();
 
-        EditorGUILayout.Space();
+        GUILayout.Space(contentSpacing);
 
-        GUILayout.BeginHorizontal(); // Start Horizontal Group for 'Join our Discord Server!' button
-        GUILayout.FlexibleSpace();
-        if (GUILayout.Button("Join our Discord Server!", GUILayout.Width(buttonWidth)))
+        GUILayout.BeginHorizontal();
+        GUILayout.Space(marginSize);
+        GUILayout.Label("Need help?", EditorStyles.boldLabel);
+        GUILayout.Space(marginSize);
+        GUILayout.EndHorizontal();
+
+        // Create new account
+        GUILayout.BeginHorizontal();
+        GUILayout.Space(marginSize);
+        if (GUILayout.Button("Join our Discord Server!!"))
         {
             Application.OpenURL("https://discord.gg/7pYEYFBA8n");
         }
-        GUILayout.FlexibleSpace();
-        GUILayout.EndHorizontal(); // End Horizontal Group for 'Join our Discord Server!' button
-
-        GUILayout.EndVertical(); // End Vertical Group
+        GUILayout.Space(marginSize);
+        GUILayout.EndHorizontal();
     }
-
 
     private void OnDestroy()
     {
