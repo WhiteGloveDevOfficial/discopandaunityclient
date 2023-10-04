@@ -1,9 +1,12 @@
 using UnityEngine;
 using UnityEditor;
+using UnityEditor.PackageManager.UI;
 
 public class EnterAPIKeyWindow : EditorWindow
 {
     private static EnterAPIKeyWindow window;
+    
+    private static string newPendingKey;
     private static bool hasApiKeyChanged;
 
     [MenuItem("Window/DiscoPanda/Enter API Key")]
@@ -13,6 +16,9 @@ public class EnterAPIKeyWindow : EditorWindow
         {
             window = EditorWindow.GetWindow<EnterAPIKeyWindow>();
             window.titleContent = new GUIContent("DiscoPanda Info");
+            window.minSize = new Vector2(300, 300);
+
+            window.position = new Rect(window.position) { width = 500 };
         }
         else
         {
@@ -50,15 +56,18 @@ public class EnterAPIKeyWindow : EditorWindow
         GUILayout.Space(marginSize);
         EditorGUI.BeginChangeCheck();
         EditorGUIUtility.labelWidth = 70;
+        
         var newKey = EditorGUILayout.TextField("API Key:", DiscoPandaRecorderInfo.Asset.APIKEY);
         if (EditorGUI.EndChangeCheck())
         {
+            newPendingKey = newKey;
             hasApiKeyChanged = true;
         }
+
         EditorGUI.BeginDisabledGroup(!hasApiKeyChanged);
         if (GUILayout.Button("Save", GUILayout.Width(80))) // You can adjust the width as needed
         {
-            DiscoPandaRecorderInfo.Asset.APIKEY = newKey;
+            DiscoPandaRecorderInfo.Asset.APIKEY = newPendingKey;
             EditorUtility.SetDirty(DiscoPandaRecorderInfo.Asset);
             AssetDatabase.SaveAssets();
             hasApiKeyChanged = false;
